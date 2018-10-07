@@ -8,11 +8,13 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import com.rubyit.metaltrade.obj.AssetType;
 import com.rubyit.metaltrade.orderbook.Order;
 import com.rubyit.metaltrade.orderbook.OrderBook;
 import com.rubyit.metaltrade.orderbook.PairOrders;
+import com.rubyit.metaltrade.orderbook.Order.Status;
 
 public class Trader extends Account implements TraderType {
 
@@ -55,7 +57,6 @@ public class Trader extends Account implements TraderType {
 					+ ", offeredAsset=" + offeredAsset + ", offeredAmount=" + offeredAmount + ", expectedAsset="
 					+ expectedAsset + ", expectedAssetUnitPrice=" + expectedAssetUnitPrice + "}");
 		}
-
 		
 		Asset feeAsset = myWallet.getAsset(orderbook.retrieveTransactionFeeAssetType());
 		BigDecimal feeAssetBalances = formatNumber(feeAsset.getBalance().subtract(feeAsset.getBlockedBalance()));
@@ -72,6 +73,7 @@ public class Trader extends Account implements TraderType {
 				.multiply(BigDecimal.valueOf(expectedAssetUnitPrice));
 		final Asset myAsset = myWallet.getAsset(offeredAsset);
 		final BigDecimal balances = formatNumber(myAsset.getBalance().subtract(myAsset.getBlockedBalance()));
+		
 		if (balances.compareTo(assetTotalAmountPrice) < 0) {
 
 			throw new RuntimeException("ERROR: unable to create order for the asset {asset="
@@ -123,16 +125,31 @@ public class Trader extends Account implements TraderType {
 			}
 		}
 	}
-
-	public void fillOrder(Order filledOrder) {
+	
+	public Optional<Order> retrieveOrderBy(String orderID) {
+		final List<Order> allOrders = getCreatedOrders();
+		allOrders.addAll(filledOrders);
 		
-		transactionFeePayment(filledOrder);
-		orderPayment(filledOrder);
+		for (Order order : allOrders) {
+			if (order.getID().equals(orderID)) {
+				return Optional.of(order);
+			}
+		}
+		
+		return Optional.empty();
+	}
 
+	public void fillOrder(PairOrders pair, Order order, Order matchedOrder) {
+		
+		transactionFeePayment(order);
+		orderPayment(order, matchedOrder);
+		
+		Order filledOrder = new Order(order, order.getType(), matchedOrder, Status.FILLED);
+		pair.addFilledOrder(filledOrder);
 		filledOrders.add(filledOrder);
 	}
 
-	private void orderPayment(Order filledOrder) {
+	private void orderPayment(Order filledOrder, Order matchedOrder) {
 
 		AssetType offeredAsset = filledOrder.getOfferedAsset();
 		AssetType expectedAsset = filledOrder.getExpectedAsset();
@@ -140,8 +157,31 @@ public class Trader extends Account implements TraderType {
 		BigDecimal expectedUnitPrice = filledOrder.getExpectedAssetUnitPrice();
 		BigDecimal totalAmountPrice = filledOrder.getAssetTotalAmountPrice();
 
-		// perform withdraw and deposit
-		performWithdrawAndDeposit(offeredAsset, offeredAmount, expectedAsset, totalAmountPrice);
+		if (filledOrder.getType().equals(Order.Type.SELL)) {
+			
+			try {
+				myWallet.getAsset(expectedAsset).withdraw(matchedOrder.getOfferedAmount());
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+				// assetChangeLock.unlock();
+				throw new RuntimeException("ERROR: unable to perform transfer", e);
+			}
+			
+			myWallet.getAsset(offeredAsset).deposit(matchedOrder.getAssetTotalAmountPrice());
+		} else {
+			
+			try {
+				myWallet.getAsset(expectedAsset).withdraw(filledOrder.getAssetTotalAmountPrice());
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+				// assetChangeLock.unlock();
+				throw new RuntimeException("ERROR: unable to perform transfer", e);
+			}
+			
+			myWallet.getAsset(offeredAsset).deposit(offeredAmount);
+		}
 	}
 
 	private void transactionFeePayment(Order filledOrder) {
@@ -149,6 +189,7 @@ public class Trader extends Account implements TraderType {
 		if (filledOrder.getTransactionFee().getTransactionFeeValue().compareTo(BigDecimal.ZERO) == 0) {
 			return;
 		}
+		
 		AssetType offeredAsset = filledOrder.getTransactionFee().getTransactionFeeAssetType();
 		BigDecimal offeredAmount = filledOrder.getTransactionFee().getTransactionFeeValue();
 		AssetType expectedAsset = filledOrder.getTransactionFee().getTransactionFeeAssetType();
@@ -156,12 +197,6 @@ public class Trader extends Account implements TraderType {
 		BigDecimal totalAmountPrice = formatNumber(filledOrder.getTransactionFee().getTransactionFeeValue().add(filledOrder.getTransactionFee().getTransactionFeeValue()));
 		
 		// perform withdraw and deposit
-		performWithdrawAndDeposit(offeredAsset, offeredAmount, expectedAsset, totalAmountPrice);
-	}
-
-	private void performWithdrawAndDeposit(AssetType offeredAsset, BigDecimal offeredAmount, AssetType expectedAsset,
-			BigDecimal totalAmountPrice) {
-		
 		try {
 			myWallet.getAsset(expectedAsset).withdraw(totalAmountPrice);
 		} catch (InterruptedException e) {

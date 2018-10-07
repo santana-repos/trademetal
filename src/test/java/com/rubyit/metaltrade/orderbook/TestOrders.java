@@ -7,6 +7,8 @@ import java.math.BigDecimal;
 import java.math.MathContext;
 import java.util.Optional;
 
+import javax.management.RuntimeErrorException;
+
 import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
@@ -102,30 +104,151 @@ public class TestOrders {
 		Double renataOfferedGoldUsdPrice = commomGoldUsdPrice.doubleValue();
 		Double mockgoldOfferedGoldAmount = commomAmount.doubleValue();
 		Double mockgoldOfferedGoldUsdPrice = commomGoldUsdPrice.doubleValue();
-		BigDecimal expectedRenataGoldAmount = formatNumber(0.14330900d);
-		BigDecimal expectedRenataUsdAmount = formatNumber(renataInitialUSDBalance.subtract(commomGOLDxUSD).subtract(formatNumber(usdBaseTranactionFee)));
-		BigDecimal expectedMockgoldGoldAmount = formatNumber(mockgoldInitialGOLDBalance.subtract(formatNumber(mockgoldOfferedGoldAmount)));
-		BigDecimal expectedMockgoldUsdAmount = formatNumber(mockgoldInitialUSDBalance.add(commomGOLDxUSD).subtract(formatNumber(usdBaseTranactionFee)));
 		
 		OrderBook orderbook = new OrderBook(USD, usdBaseTranactionFee, GOLDxUSD);
 		
 		Order renataBuyOrder = Renata.createOrder(orderbook, USD, renataOffereddUsdAmount, GOLD, renataOfferedGoldUsdPrice);
+		assertEquals(Order.Type.BUY, renataBuyOrder.getType());
 		assertEquals(Order.Status.CREATED, renataBuyOrder.getStatus());
-		Order mockgoldSellOrder = MockGold.createOrder(orderbook, GOLD, mockgoldOfferedGoldAmount, USD, mockgoldOfferedGoldUsdPrice);
 		
+		
+		BigDecimal expectedRenataGoldAmount = renataInitialGOLDBalance.add(formatNumber(0.14330900d));
+		BigDecimal expectedRenataUsdAmount = formatNumber(renataInitialUSDBalance.subtract(formatNumber(5.74955708d)).subtract(formatNumber(usdBaseTranactionFee)));
+		BigDecimal expectedMockgoldGoldAmount = formatNumber(mockgoldInitialGOLDBalance.subtract(formatNumber(expectedRenataGoldAmount)));
+		BigDecimal expectedMockgoldUsdAmount = formatNumber(mockgoldInitialUSDBalance.add(formatNumber(5.74955708d)).subtract(formatNumber(usdBaseTranactionFee)));
+
+		assertEquals( formatNumber(0.14330900d), renataBuyOrder.getAssetTotalAmountPrice() );
+		assertEquals( formatNumber(formatNumber(renataOffereddUsdAmount).multiply(formatNumber(renataOfferedGoldUsdPrice))), formatNumber(5.74955708d) ); //0.14330900d
+		assertEquals( formatNumber(5.74955708d), renataBuyOrder.getOfferedAmount() );
+		assertEquals( formatNumber(40.12000000d), renataBuyOrder.getExpectedAssetUnitPrice() );
+		
+		Order mockgoldSellOrder = MockGold.createOrder(orderbook, GOLD, mockgoldOfferedGoldAmount, USD, mockgoldOfferedGoldUsdPrice);
+		assertEquals(Order.Type.SELL, mockgoldSellOrder.getType());
+		
+		Order retrievedMockgoldSellOrder;
+		try {
+			retrievedMockgoldSellOrder = orderbook.findOrderBy(Optional.of(GOLDxUSD.getPairName()), mockgoldSellOrder.getID()).get();
+		} catch (InterruptedException e) {
+			throw new RuntimeException("Unable to search for an order now", e);
+		}
+		assertEquals(Order.Type.SELL, retrievedMockgoldSellOrder.getType());
 		assertEquals(Order.Status.PARTIAL, mockgoldSellOrder.getStatus());
-		assertEquals(Order.Status.FILLED, renataBuyOrder.getStatus());
+		assertEquals(mockgoldSellOrder, retrievedMockgoldSellOrder);
+		assertEquals(Order.Status.PARTIAL, retrievedMockgoldSellOrder.getStatus());
+		assertEquals(formatNumber(formatNumber(9.76155708d).subtract(formatNumber(5.74955708d)))/*4.01200000*/, retrievedMockgoldSellOrder.getAssetTotalAmountPrice());
+		assertEquals(formatNumber(4.01200000d), retrievedMockgoldSellOrder.getAssetTotalAmountPrice() );
+		assertEquals(formatNumber( formatNumber(4.01200000d).divide(formatNumber(40.12000000d)) )/*0.1d*/, retrievedMockgoldSellOrder.getOfferedAmount() );
+		assertEquals(formatNumber(0.10000000d), retrievedMockgoldSellOrder.getOfferedAmount() );
+		assertEquals(formatNumber(40.12000000d), retrievedMockgoldSellOrder.getExpectedAssetUnitPrice());
+		
+		Order retrievedRenataBuyOrder;
+		try {
+			retrievedRenataBuyOrder = orderbook.findOrderBy(Optional.of(GOLDxUSD.getPairName()), renataBuyOrder.getID()).get();
+		} catch (InterruptedException e) {
+			throw new RuntimeException("Unable to search for an order now", e);
+		}
+		assertEquals(Order.Type.BUY, retrievedRenataBuyOrder.getType());
+		assertEquals(Order.Status.FILLED, retrievedRenataBuyOrder.getStatus());
+		assertEquals(formatNumber(0.14330900d), retrievedRenataBuyOrder.getAssetTotalAmountPrice());
+		assertEquals(formatNumber(5.74955708d), retrievedRenataBuyOrder.getOfferedAmount());
+		assertEquals(formatNumber(40.12000000d), retrievedRenataBuyOrder.getExpectedAssetUnitPrice());
 		
 		assertEquals(expectedRenataGoldAmount, Renata.getWalletAsset(GOLD).getBalance());//0.14330900
-		assertEquals(expectedRenataUsdAmount, Renata.getWalletAsset(USD).getBalance());//250.66844292
+		assertEquals(expectedRenataUsdAmount, Renata.getWalletAsset(USD).getBalance());//254.68044292
 		assertEquals(formatNumber(0d), Renata.getWalletAsset(GOLD).getBlockedBalance());
 		assertEquals(formatNumber(0d), Renata.getWalletAsset(USD).getBlockedBalance());
-		assertEquals(expectedMockgoldGoldAmount, MockGold.getWalletAsset(GOLD).getBalance());//499.90000000
+		assertEquals(expectedMockgoldGoldAmount, MockGold.getWalletAsset(GOLD).getBalance());//499.85669100
 		BigDecimal expectedMockgoldGoldBlockedBalance = formatNumber(commomAmount.subtract(expectedRenataGoldAmount));
 		assertEquals(expectedMockgoldGoldBlockedBalance, MockGold.getWalletAsset(GOLD).getBlockedBalance());//0.10000000
-		assertEquals(expectedMockgoldUsdAmount, MockGold.getWalletAsset(USD).getBalance());//509.75155708
-		assertEquals(formatNumber(0d), MockGold.getWalletAsset(GOLD).getBlockedBalance());
-		assertEquals(formatNumber(0d), MockGold.getWalletAsset(USD).getBlockedBalance());
+		assertEquals(expectedMockgoldUsdAmount, MockGold.getWalletAsset(USD).getBalance());//505.73955708
+		assertEquals(formatNumber(0.1d), MockGold.getWalletAsset(GOLD).getBlockedBalance());
+		assertEquals(formatNumber(0.01d), MockGold.getWalletAsset(USD).getBlockedBalance());
+	}
+	
+	@Test
+	public void shouldExecutePartialMatchesSellBuy() {
+		
+		MockOriginAccount MockGold =  new MockOriginAccount(GOLD, USD);
+		TraderType Renata = new MockTrader("Renata", USD);
+		
+		BigDecimal mockgoldInitialUSDBalance = formatNumber(500d); 
+		BigDecimal mockgoldInitialGOLDBalance = formatNumber(500d); 
+		BigDecimal renataInitialUSDBalance = formatNumber(260.44d); 
+		BigDecimal renataInitialGOLDBalance = formatNumber(0d);
+		
+		assertEquals(mockgoldInitialUSDBalance, MockGold.getWalletAsset(USD).getBalance());
+		assertEquals(mockgoldInitialGOLDBalance, MockGold.getWalletAsset(GOLD).getBalance());
+		assertEquals(renataInitialUSDBalance, Renata.getWalletAsset(USD).getBalance());
+		assertEquals(renataInitialGOLDBalance, Renata.getWalletAsset(GOLD).getBalance());
+		
+		BigDecimal commomGoldUsdPrice = formatNumber(40.12d);
+		BigDecimal commomAmount = formatNumber(0.243309d);
+		BigDecimal commomGOLDxUSD = formatNumber(9.76155708d);
+		Double renataOffereddUsdAmount = commomAmount.subtract(formatNumber(0.1d)).doubleValue();
+		Double renataOfferedGoldUsdPrice = commomGoldUsdPrice.doubleValue();
+		Double mockgoldOfferedGoldAmount = commomAmount.doubleValue();
+		Double mockgoldOfferedGoldUsdPrice = commomGoldUsdPrice.doubleValue();
+		
+		
+		BigDecimal expectedRenataGoldAmount = renataInitialGOLDBalance.add(formatNumber(0.14330900d));
+		BigDecimal expectedRenataUsdAmount = formatNumber(renataInitialUSDBalance.subtract(formatNumber(5.74955708d)).subtract(formatNumber(usdBaseTranactionFee)));
+		BigDecimal expectedMockgoldGoldAmount = formatNumber(mockgoldInitialGOLDBalance.subtract(formatNumber(expectedRenataGoldAmount)));
+		BigDecimal expectedMockgoldUsdAmount = formatNumber(mockgoldInitialUSDBalance.add(formatNumber(5.74955708d)).subtract(formatNumber(usdBaseTranactionFee)));
+		
+		OrderBook orderbook = new OrderBook(USD, usdBaseTranactionFee, GOLDxUSD);
+		
+		Order mockgoldSellOrder = MockGold.createOrder(orderbook, GOLD, mockgoldOfferedGoldAmount, USD, mockgoldOfferedGoldUsdPrice);
+		assertEquals(Order.Type.SELL, mockgoldSellOrder.getType());
+		assertEquals(Order.Status.CREATED, mockgoldSellOrder.getStatus());
+		
+		Order renataBuyOrder = Renata.createOrder(orderbook, USD, renataOffereddUsdAmount, GOLD, renataOfferedGoldUsdPrice);
+		assertEquals(Order.Type.BUY, renataBuyOrder.getType());
+		
+		assertEquals( formatNumber(0.14330900d), renataBuyOrder.getAssetTotalAmountPrice() );
+		assertEquals( formatNumber(formatNumber(renataOffereddUsdAmount).multiply(formatNumber(renataOfferedGoldUsdPrice))), formatNumber(5.74955708d) ); //0.14330900d
+		assertEquals( formatNumber(5.74955708d), renataBuyOrder.getOfferedAmount() );
+		assertEquals( formatNumber(40.12000000d), renataBuyOrder.getExpectedAssetUnitPrice() );
+		
+		//throw new UnsupportedOperationException("Not yet implemented test");
+
+		Order retrievedMockgoldSellOrder;
+		try {
+			retrievedMockgoldSellOrder = orderbook.findOrderBy(Optional.of(GOLDxUSD.getPairName()), mockgoldSellOrder.getID()).get();
+		} catch (InterruptedException e) {
+			throw new RuntimeException("Unable to search for an order now", e);
+		}
+		assertEquals(Order.Type.SELL, retrievedMockgoldSellOrder.getType());
+		assertEquals(Order.Status.PARTIAL, mockgoldSellOrder.getStatus());
+		assertEquals(mockgoldSellOrder, retrievedMockgoldSellOrder);
+		assertEquals(Order.Status.PARTIAL, retrievedMockgoldSellOrder.getStatus());
+		assertEquals(formatNumber(formatNumber(9.76155708d).subtract(formatNumber(5.74955708d)))/*4.01200000*/, retrievedMockgoldSellOrder.getAssetTotalAmountPrice());
+		assertEquals(formatNumber(4.01200000d), retrievedMockgoldSellOrder.getAssetTotalAmountPrice() );
+		assertEquals(formatNumber( formatNumber(4.01200000d).divide(formatNumber(40.12000000d)) )/*0.1d*/, retrievedMockgoldSellOrder.getOfferedAmount() );
+		assertEquals(formatNumber(0.10000000d), retrievedMockgoldSellOrder.getOfferedAmount() );
+		assertEquals(formatNumber(40.12000000d), retrievedMockgoldSellOrder.getExpectedAssetUnitPrice());
+		
+		Order retrievedRenataBuyOrder;
+		try {
+			retrievedRenataBuyOrder = orderbook.findOrderBy(Optional.of(GOLDxUSD.getPairName()), renataBuyOrder.getID()).get();
+		} catch (InterruptedException e) {
+			throw new RuntimeException("Unable to search for an order now", e);
+		}
+		assertEquals(Order.Type.BUY, retrievedRenataBuyOrder.getType());
+		assertEquals(Order.Status.FILLED, retrievedRenataBuyOrder.getStatus());
+		assertEquals(formatNumber(0.14330900d), retrievedRenataBuyOrder.getAssetTotalAmountPrice());
+		assertEquals(formatNumber(5.74955708d), retrievedRenataBuyOrder.getOfferedAmount());
+		assertEquals(formatNumber(40.12000000d), retrievedRenataBuyOrder.getExpectedAssetUnitPrice());
+		
+		assertEquals(expectedRenataGoldAmount, Renata.getWalletAsset(GOLD).getBalance());//0.14330900
+		assertEquals(expectedRenataUsdAmount, Renata.getWalletAsset(USD).getBalance());//254.68044292
+		assertEquals(formatNumber(0d), Renata.getWalletAsset(GOLD).getBlockedBalance());
+		assertEquals(formatNumber(0d), Renata.getWalletAsset(USD).getBlockedBalance());
+		assertEquals(expectedMockgoldGoldAmount, MockGold.getWalletAsset(GOLD).getBalance());//499.85669100
+		BigDecimal expectedMockgoldGoldBlockedBalance = formatNumber(commomAmount.subtract(expectedRenataGoldAmount));
+		assertEquals(expectedMockgoldGoldBlockedBalance, MockGold.getWalletAsset(GOLD).getBlockedBalance());//0.10000000
+		assertEquals(expectedMockgoldUsdAmount, MockGold.getWalletAsset(USD).getBalance());//505.73955708
+		assertEquals(formatNumber(0.1d), MockGold.getWalletAsset(GOLD).getBlockedBalance());
+		assertEquals(formatNumber(0.01d), MockGold.getWalletAsset(USD).getBlockedBalance());
 	}
 	
 	@Test
@@ -315,10 +438,12 @@ public class TestOrders {
 	public void shouldThrowExceptionWhenCreateOrderWhenBalancePlusBlockbalanceIsNotEnough(){
 		expectedEx.expect(RuntimeException.class);
 		expectedEx.expectMessage(
-				"ERROR: unable to create order for the asset {asset=GOLD} offering the "
-				+ "amount {offeredAmount=2.01} and expecting for {expectedAssetUnitPrice=1.0} "
-				+ "having a balance {balance=4.1100000} minus blocked balance "
-				+ "{blockedBalance=3.1100000} lower than assetTotalAmountPrice {assetTotalAmountPrice=2.010}.");
+				"ERROR: unable to create order for the asset {asset=GOLD} "
+				+ "offering the amount {offeredAmount=2.01} and expecting "
+				+ "for {expectedAssetUnitPrice=1.0} having a balance "
+				+ "{balance=4.11000000} minus blocked balance "
+				+ "{blockedBalance=3.11000000} lower than "
+				+ "assetTotalAmountPrice {assetTotalAmountPrice=2.010}.");
 		
 		Double usdAmount = 49.99d;
 		Double usdUnitPrice = 1.00d;
@@ -422,8 +547,9 @@ public class TestOrders {
 				"ERROR: unable to create order for the asset {asset=GOLD} "
 				+ "offering the amount {offeredAmount=4.12} and expecting "
 				+ "for {expectedAssetUnitPrice=1.0} having a balance "
-				+ "{balance=4.1100000} minus blocked balance {blockedBalance=0} "
-				+ "lower than assetTotalAmountPrice {assetTotalAmountPrice=4.120}.");
+				+ "{balance=4.11000000} minus blocked balance "
+				+ "{blockedBalance=0.00000000} lower than "
+				+ "assetTotalAmountPrice {assetTotalAmountPrice=4.120}.");
 		
 		Double usdAmount = 49.99d;
 		Double usdUnitPrice = 1.00d;
@@ -556,29 +682,29 @@ public class TestOrders {
 
 		assertNotNull(mockOriginAccountUSD.getWalletAsset(USD));
 		assertNotNull(mockOriginAccountUSD.getWalletAsset(USD).getBalance());
-		assertEquals(0, mockOriginAccountUSD.getWalletAsset(USD).getBalance().compareTo(BigDecimal.valueOf(MockOriginAccount.INITIAL_BALANCE)));
+		assertEquals(formatNumber(MockOriginAccount.INITIAL_BALANCE), mockOriginAccountUSD.getWalletAsset(USD).getBalance());
 		assertNotNull(mockOriginAccountGOLD.getWalletAsset(GOLD));
 		assertNotNull(mockOriginAccountGOLD.getWalletAsset(GOLD).getBalance());
-		assertEquals(0, mockOriginAccountGOLD.getWalletAsset(GOLD).getBalance().compareTo(BigDecimal.valueOf(MockOriginAccount.INITIAL_BALANCE)));
+		assertEquals(formatNumber(MockOriginAccount.INITIAL_BALANCE), mockOriginAccountGOLD.getWalletAsset(GOLD).getBalance());
 		assertNotNull(mockOriginAccountSILVER.getWalletAsset(SILVER));
 		assertNotNull(mockOriginAccountSILVER.getWalletAsset(SILVER).getBalance());
-		assertEquals(0, mockOriginAccountSILVER.getWalletAsset(SILVER).getBalance().compareTo(BigDecimal.valueOf(MockOriginAccount.INITIAL_BALANCE)));
+		assertEquals(formatNumber(MockOriginAccount.INITIAL_BALANCE), mockOriginAccountSILVER.getWalletAsset(SILVER).getBalance());
 		assertNotNull(mockOriginAccountBRONZE.getWalletAsset(BRONZE));
 		assertNotNull(mockOriginAccountBRONZE.getWalletAsset(BRONZE).getBalance());
-		assertEquals(0, mockOriginAccountBRONZE.getWalletAsset(BRONZE).getBalance().compareTo(BigDecimal.valueOf(MockOriginAccount.INITIAL_BALANCE)));
+		assertEquals(formatNumber(MockOriginAccount.INITIAL_BALANCE), mockOriginAccountBRONZE.getWalletAsset(BRONZE).getBalance());
 		
 		assertNotNull(thiago.getWalletAsset(USD));
 		assertNotNull(thiago.getWalletAsset(USD).getBalance());
-		assertEquals(0, thiago.getWalletAsset(USD).getBalance().compareTo(BigDecimal.valueOf(MockTrader.INITIAL_BALANCE)));
+		assertEquals(formatNumber(MockTrader.INITIAL_BALANCE), thiago.getWalletAsset(USD).getBalance());
 		assertNotNull(renata.getWalletAsset(USD));
 		assertNotNull(renata.getWalletAsset(USD).getBalance());
-		assertEquals(0, renata.getWalletAsset(USD).getBalance().compareTo(BigDecimal.valueOf(MockTrader.INITIAL_BALANCE)));
+		assertEquals(formatNumber(MockTrader.INITIAL_BALANCE), renata.getWalletAsset(USD).getBalance());
 		assertNotNull(maria.getWalletAsset(USD));
 		assertNotNull(maria.getWalletAsset(USD).getBalance());
-		assertEquals(0, maria.getWalletAsset(USD).getBalance().compareTo(BigDecimal.valueOf(MockTrader.INITIAL_BALANCE)));
+		assertEquals(formatNumber(MockTrader.INITIAL_BALANCE), maria.getWalletAsset(USD).getBalance());
 		assertNotNull(alice.getWalletAsset(USD));
 		assertNotNull(alice.getWalletAsset(USD).getBalance());
-		assertEquals(0, alice.getWalletAsset(USD).getBalance().compareTo(BigDecimal.valueOf(MockTrader.INITIAL_BALANCE)));
+		assertEquals(formatNumber(MockTrader.INITIAL_BALANCE), alice.getWalletAsset(USD).getBalance());
 		
 		
 		AssetType offeredAsset = null;
@@ -586,106 +712,101 @@ public class TestOrders {
 		AssetType expectedAsset = null;
 		Double expectedAssetUnitPrice = null;
 		
-		offeredAsset = USD;
-		offeredAmount = usdAmount;
-		expectedAsset = USD;
-		expectedAssetUnitPrice = usdUnitPrice;
-		//mockOriginAccountUSD.createOrder(orderbook, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice);//getWallet().transfer(USD, usdAmount, thiago);
-		
-		
 		offeredAsset = GOLD;
-		offeredAmount = goldAmount;
+		offeredAmount = formatNumber(goldAmount).doubleValue(); // 9.76155717
 		expectedAsset = USD;
-		expectedAssetUnitPrice = goldUnitPriceInUSD;
+		expectedAssetUnitPrice = formatNumber(goldUnitPriceInUSD).doubleValue();  // 40.12
+		//SELL
 		Order order1 = mockOriginAccountGOLD.createOrder(orderbook, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice);
 		assertEquals(GOLDxUSD, order1.getPair());
 		assertNotNull(order1.getAssetTotalAmountPrice());
-		Double assetTotalAmountPriceGoldUsd = order1.getAssetTotalAmountPrice().doubleValue();
-		assertNotEquals(0, order1.getAssetTotalAmountPrice().compareTo(BigDecimal.ZERO));
-		assertEquals(formatNumber(assetTotalAmountPriceGoldUsd), formatNumber(formatNumber(offeredAmount).multiply(formatNumber(expectedAssetUnitPrice))) );
+		Double assetTotalAmountPriceGoldUsd = order1.getAssetTotalAmountPrice().doubleValue();  // 164.8932
+		assertNotEquals(formatNumber(0d), order1.getAssetTotalAmountPrice());
+		assertEquals(formatNumber(formatNumber(offeredAmount).multiply(formatNumber(expectedAssetUnitPrice))), formatNumber(assetTotalAmountPriceGoldUsd) );
 		
 		offeredAsset = USD;
-		offeredAmount = 1 / goldAmount;
+		offeredAmount = formatNumber(goldAmount).doubleValue();
 		expectedAsset = GOLD;
-		expectedAssetUnitPrice = goldUnitPriceInUSD;
+		expectedAssetUnitPrice = formatNumber(goldUnitPriceInUSD).doubleValue(); // 40.12
+		//BUY
 		Order order4 = renata.createOrder(orderbook, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice);
 		assertEquals(GOLDxUSD, order4.getPair());
 		assertNotNull(order4.getAssetTotalAmountPrice());
-		Double assetTotalAmountPriceUsdGold = order4.getAssetTotalAmountPrice().doubleValue();
-		assertNotEquals(0, order4.getAssetTotalAmountPrice().compareTo(BigDecimal.ZERO));
-		assertEquals(formatNumber(assetTotalAmountPriceUsdGold), formatNumber(offeredAmount));
+		Double assetTotalAmountPriceUsdGold = order4.getAssetTotalAmountPrice().doubleValue(); // 0.24330900
+		assertNotEquals(formatNumber(0d), order4.getAssetTotalAmountPrice());
+		assertEquals(formatNumber(offeredAmount), formatNumber(assetTotalAmountPriceUsdGold));
 		
 		
 		offeredAsset = SILVER;
-		offeredAmount = silverAmount;
+		offeredAmount = formatNumber(silverAmount).doubleValue();
 		expectedAsset = USD;
 		expectedAssetUnitPrice = silverUnitPriceInUSD;
 		Order order2 = mockOriginAccountSILVER.createOrder(orderbook, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice);
 		assertEquals(SILVERxUSD, order2.getPair());
 		assertNotNull(order2.getAssetTotalAmountPrice());
 		Double assetTotalAmountPriceSilverUsd = order2.getAssetTotalAmountPrice().doubleValue();
-		assertNotEquals(0, order2.getAssetTotalAmountPrice().compareTo(BigDecimal.ZERO));
-		assertEquals(formatNumber(assetTotalAmountPriceSilverUsd), formatNumber(formatNumber(offeredAmount).multiply(formatNumber(expectedAssetUnitPrice))) );
+		assertNotEquals(formatNumber(0d), order2.getAssetTotalAmountPrice());
+		assertEquals(formatNumber(formatNumber(offeredAmount).multiply(formatNumber(expectedAssetUnitPrice))), formatNumber(assetTotalAmountPriceSilverUsd) );
 		
 		offeredAsset = USD;
-		offeredAmount = 1 / silverAmount;
+		offeredAmount = formatNumber(silverAmount).doubleValue();
 		expectedAsset = SILVER;
-		expectedAssetUnitPrice = silverUnitPriceInUSD;
+		expectedAssetUnitPrice = formatNumber(silverUnitPriceInUSD).doubleValue();
 		Order order5 = maria.createOrder(orderbook, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice);
 		assertEquals(SILVERxUSD, order5.getPair());
 		assertNotNull(order5.getAssetTotalAmountPrice());
 		Double assetTotalAmountPriceUsdSilver = order5.getAssetTotalAmountPrice().doubleValue();
-		assertNotEquals(0, order5.getAssetTotalAmountPrice().compareTo(BigDecimal.ZERO));
-		assertEquals(formatNumber(assetTotalAmountPriceUsdSilver), formatNumber(offeredAmount) );
+		assertNotEquals(formatNumber(0d), order5.getAssetTotalAmountPrice());
+		assertEquals(formatNumber(offeredAmount), formatNumber(assetTotalAmountPriceUsdSilver) );
 		
 		offeredAsset = BRONZE;
-		offeredAmount = bronzeAmount;
+		offeredAmount = formatNumber(bronzeAmount).doubleValue();
 		expectedAsset = USD;
-		expectedAssetUnitPrice = bronzeUnitPriceInUSD;
+		expectedAssetUnitPrice = formatNumber(bronzeUnitPriceInUSD).doubleValue();
 		Order order3 = mockOriginAccountBRONZE.createOrder(orderbook, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice);
 		assertEquals(BRONZExUSD, order3.getPair());
 		assertNotNull(order3.getAssetTotalAmountPrice());
 		Double assetTotalAmountPriceBronzeUsd = order3.getAssetTotalAmountPrice().doubleValue();
-		assertNotEquals(0, order2.getAssetTotalAmountPrice().compareTo(BigDecimal.ZERO));
-		assertEquals(formatNumber(assetTotalAmountPriceBronzeUsd), formatNumber(formatNumber(offeredAmount).multiply(formatNumber(expectedAssetUnitPrice))) );
+		assertNotEquals(formatNumber(0d), order2.getAssetTotalAmountPrice());
+		assertEquals(formatNumber(formatNumber(offeredAmount).multiply(formatNumber(expectedAssetUnitPrice))), formatNumber(assetTotalAmountPriceBronzeUsd) );
 		
 		offeredAsset = USD;
-		offeredAmount = 1 / bronzeAmount;
+		offeredAmount = formatNumber(bronzeAmount).doubleValue();
 		expectedAsset = BRONZE;
-		expectedAssetUnitPrice = bronzeUnitPriceInUSD;
+		expectedAssetUnitPrice = formatNumber(bronzeUnitPriceInUSD).doubleValue();
 		Order order6 = alice.createOrder(orderbook, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice);
 		assertEquals(BRONZExUSD, order6.getPair());
 		assertNotNull(order6.getAssetTotalAmountPrice());
 		Double assetTotalAmountPriceUsdBronze = order6.getAssetTotalAmountPrice().doubleValue();
-		assertNotEquals(0, order6.getAssetTotalAmountPrice().compareTo(BigDecimal.ZERO));
-		assertEquals(formatNumber(assetTotalAmountPriceUsdBronze), formatNumber(offeredAmount) );
+		assertNotEquals(0, order6.getAssetTotalAmountPrice().compareTo(formatNumber(0d)));
+		assertEquals(formatNumber(offeredAmount), formatNumber(assetTotalAmountPriceUsdBronze));
 		
 		
-		assertEquals(0, thiago.getWalletAsset(USD).getBalance().compareTo(BigDecimal.valueOf(MockTrader.INITIAL_BALANCE)));
+		assertEquals(formatNumber(MockTrader.INITIAL_BALANCE), thiago.getWalletAsset(USD).getBalance());
 		assertNotNull(renata.getWalletAsset(GOLD));
 		assertNotNull(renata.getWalletAsset(GOLD).getBalance());
-		assertEquals(0, renata.getWalletAsset(GOLD).getBalance().compareTo(BigDecimal.valueOf(goldAmount)));
+		assertEquals(formatNumber(goldAmount), renata.getWalletAsset(GOLD).getBalance()); //4.11
 		assertNotNull(maria.getWalletAsset(SILVER));
 		assertNotNull(maria.getWalletAsset(SILVER).getBalance());
-		assertEquals(0, maria.getWalletAsset(SILVER).getBalance().compareTo(BigDecimal.valueOf(silverAmount)));
+		assertEquals(formatNumber(silverAmount), maria.getWalletAsset(SILVER).getBalance());
 		assertNotNull(alice.getWalletAsset(BRONZE));
 		assertNotNull(alice.getWalletAsset(BRONZE).getBalance());
-		assertEquals(0, alice.getWalletAsset(BRONZE).getBalance().compareTo(BigDecimal.valueOf(bronzeAmount)));
+		assertEquals(formatNumber(bronzeAmount), alice.getWalletAsset(BRONZE).getBalance());
 		
-		assertEquals(0, mockOriginAccountGOLD.getWalletAsset(GOLD).getBalance().compareTo(formatNumber(MockOriginAccount.INITIAL_BALANCE).subtract(formatNumber(assetTotalAmountPriceUsdGold))));
-		assertEquals(0, mockOriginAccountSILVER.getWalletAsset(SILVER).getBalance().compareTo(formatNumber(MockOriginAccount.INITIAL_BALANCE).subtract(formatNumber(assetTotalAmountPriceUsdSilver))));
-		assertEquals(0, mockOriginAccountBRONZE.getWalletAsset(BRONZE).getBalance().compareTo(formatNumber(MockOriginAccount.INITIAL_BALANCE).subtract(formatNumber(assetTotalAmountPriceUsdBronze))));
+		assertEquals(formatNumber(MockOriginAccount.INITIAL_BALANCE).subtract(formatNumber(assetTotalAmountPriceUsdGold)), mockOriginAccountGOLD.getWalletAsset(GOLD).getBalance());
+		assertEquals(formatNumber(MockOriginAccount.INITIAL_BALANCE).subtract(formatNumber(assetTotalAmountPriceUsdSilver)), mockOriginAccountSILVER.getWalletAsset(SILVER).getBalance());
+		assertEquals(formatNumber(MockOriginAccount.INITIAL_BALANCE).subtract(formatNumber(assetTotalAmountPriceUsdBronze)), mockOriginAccountBRONZE.getWalletAsset(BRONZE).getBalance());
 		
-		assertEquals(0, thiago.getWalletAsset(USD).getBalance().compareTo(formatNumber(MockTrader.INITIAL_BALANCE)));
+		assertEquals(formatNumber(MockTrader.INITIAL_BALANCE), thiago.getWalletAsset(USD).getBalance());
 		assertNotNull(renata.getWalletAsset(USD));
 		assertNotNull(renata.getWalletAsset(USD).getBalance());
-		assertEquals(0, renata.getWalletAsset(USD).getBalance().compareTo(formatNumber(MockTrader.INITIAL_BALANCE).subtract(formatNumber(assetTotalAmountPriceGoldUsd))));
+		assertEquals(formatNumber(MockTrader.INITIAL_BALANCE).subtract(formatNumber(assetTotalAmountPriceGoldUsd)), renata.getWalletAsset(USD).getBalance());
 		assertNotNull(maria.getWalletAsset(USD));
 		assertNotNull(maria.getWalletAsset(USD).getBalance());
-		assertEquals(0, maria.getWalletAsset(USD).getBalance().compareTo(formatNumber(MockTrader.INITIAL_BALANCE).subtract(formatNumber(assetTotalAmountPriceSilverUsd))));
+		assertEquals(formatNumber(MockTrader.INITIAL_BALANCE).subtract(formatNumber(assetTotalAmountPriceSilverUsd)), maria.getWalletAsset(USD).getBalance());
 		assertNotNull(alice.getWalletAsset(USD));
 		assertNotNull(alice.getWalletAsset(USD).getBalance());
-		assertEquals(0, alice.getWalletAsset(USD).getBalance().compareTo(formatNumber(MockTrader.INITIAL_BALANCE).subtract(formatNumber(assetTotalAmountPriceBronzeUsd))));
+		assertEquals(formatNumber(MockTrader.INITIAL_BALANCE).subtract(formatNumber(assetTotalAmountPriceBronzeUsd)), alice.getWalletAsset(USD).getBalance());
 		
 		
 		return orderbook;

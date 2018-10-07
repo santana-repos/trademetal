@@ -61,21 +61,29 @@ public class Order implements Comparable<Order> {
 		this.transactionFee = transactionFee;
 		this.status = Status.CREATED;
 	}
-	
-	public Order(Order order, Status status) {
+
+	public Order(Order order, Type orderType, Order matchedOrder, Status status) {
 		this.ID = order.ID;
 		this.traderID = order.traderID;
 		this.offeredAsset = order.offeredAsset;
 		this.expectedAssetUnitPrice = order.expectedAssetUnitPrice;
 		this.expectedAsset = order.expectedAsset;
 		this.offeredAmount = order.offeredAmount;
-		this.assetTotalAmountPrice = order.assetTotalAmountPrice;
 		this.pair = order.pair;
-		this.type = order.type;
 		this.sdf = order.sdf;
 		this.operationDate = order.operationDate; 
 		this.transactionFee = order.transactionFee;
+		
+		if (orderType.equals(Type.SELL)) {
+			this.assetTotalAmountPrice = formatNumber(order.assetTotalAmountPrice.subtract(matchedOrder.getOfferedAmount()));
+			this.offeredAmount = formatNumber(this.assetTotalAmountPrice.divide(order.expectedAssetUnitPrice));
+		} else {
+			this.assetTotalAmountPrice = order.assetTotalAmountPrice;
+			this.offeredAmount = order.offeredAmount;			
+		}
+		
 		this.status = status;
+		this.type = orderType;
 	}
 
 	public String getID() {
@@ -121,7 +129,7 @@ public class Order implements Comparable<Order> {
 	public TransactionFee getTransactionFee() {
 		return transactionFee;
 	}
-
+	
 	@Override
 	public int hashCode() {
 		final int prime = 31;
@@ -134,6 +142,7 @@ public class Order implements Comparable<Order> {
 		result = prime * result + ((offeredAsset == null) ? 0 : offeredAsset.hashCode());
 		result = prime * result + ((operationDate == null) ? 0 : operationDate.hashCode());
 		result = prime * result + ((pair == null) ? 0 : pair.hashCode());
+		result = prime * result + ((status == null) ? 0 : status.hashCode());
 		result = prime * result + ((traderID == null) ? 0 : traderID.hashCode());
 		result = prime * result + ((transactionFee == null) ? 0 : transactionFee.hashCode());
 		result = prime * result + ((type == null) ? 0 : type.hashCode());
@@ -188,6 +197,8 @@ public class Order implements Comparable<Order> {
 			if (other.pair != null)
 				return false;
 		} else if (!pair.equals(other.pair))
+			return false;
+		if (status != other.status)
 			return false;
 		if (traderID == null) {
 			if (other.traderID != null)

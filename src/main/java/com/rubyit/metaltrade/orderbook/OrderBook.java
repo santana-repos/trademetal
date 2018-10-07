@@ -9,6 +9,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -17,6 +18,7 @@ import com.rubyit.metaltrade.TraderType;
 import com.rubyit.metaltrade.obj.AssetType;
 import com.rubyit.metaltrade.obj.Pair;
 import com.rubyit.metaltrade.orderbook.Order.Status;
+import com.rubyit.metaltrade.orderbook.Order.Type;
 
 public class OrderBook {
 	
@@ -25,6 +27,10 @@ public class OrderBook {
 	private OrderBookWallet bookwallet;
 	private TransactionFee transactionFee;
 	transient private Lock pairChangeLock;
+
+	transient private Lock orderChangeLock;
+	transient private Condition findOrderFoundCondition;
+	private boolean orderCreationInProcess;
 	
 	public OrderBook(AssetType transactionFeeAssetType, Pair... pairs) {
 		if (pairs == null || pairs.length == 0) {
@@ -38,6 +44,9 @@ public class OrderBook {
 			this.pairs.add(new PairOrders(pair));
 		}
 		pairChangeLock = new ReentrantLock();
+		
+		orderChangeLock = new ReentrantLock();
+		findOrderFoundCondition = orderChangeLock.newCondition();
 	}
 	
 	public OrderBook(AssetType transactionFeeAssetType, Double transactionFeeValue, Pair... pairs) {
@@ -103,40 +112,79 @@ public class OrderBook {
 			&& (expectedAssetID.equals(priceAssetID))
 		   ) {
 			
-			traders.add(trader);
-			Order.Type orderType = Order.Type.SELL;
-			order = new Order(trader, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice, pair.getPair(), orderType, transactionFee);
-			trader.addCreatedOrder(order, this, pair);
-
-			//look to buyOrders
-			Order matchedOrder = (pair.retrieveBuyOrders().size() > 0) ? pair.getAskOrder() : null;
+			orderChangeLock.lock();
+			try {
+				
+				this.orderCreationInProcess = true;
+				traders.add(trader);
+				Order.Type orderType = Order.Type.SELL;
+				order = new Order(trader, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice, pair.getPair(), orderType, transactionFee);
+				trader.addCreatedOrder(order, this, pair);
+				
+				//look to buyOrders
+				Order matchedOrder = (pair.retrieveBuyOrders().size() > 0) ? pair.getAskOrder() : null;
+				
+				order = processMatchOrders(trader, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice, pair,
+						orderType, matchedOrder, order);
+			} finally {
+				this.orderCreationInProcess = false;
+				orderChangeLock.unlock();
+			}
 			
-			return processMatchOrders(trader, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice, pair,
-					orderType, matchedOrder, order);
+			return order;
 		}
 		if (
 			(offeredAssetID.equals(priceAssetID))
 			&& (expectedAssetID.equals(amountAssetID))
 		   ) {
 			
-			traders.add(trader);
-			Order.Type orderType = Order.Type.BUY;
-			order = new Order(trader, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice, pair.getPair(), orderType, transactionFee);
-			trader.addCreatedOrder(order, this, pair);
+			orderChangeLock.lock();
+			try {
+				
+				this.orderCreationInProcess = true;
+				traders.add(trader);
+				Order.Type orderType = Order.Type.BUY;
+				order = new Order(trader, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice, pair.getPair(), orderType, transactionFee);
+				trader.addCreatedOrder(order, this, pair);
+				
+				//look to sellOrders
+				Order matchedOrder = (pair.retrieveSellOrders().size() > 0) ? pair.getBidOrder() : null;
+				
+				order = processMatchOrders(trader, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice, pair,
+						orderType, matchedOrder, order);
+			} finally {
+				this.orderCreationInProcess = false;
+				orderChangeLock.unlock();
+			}
 			
-			//look to sellOrders
-			Order matchedOrder = (pair.retrieveSellOrders().size() > 0) ? pair.getBidOrder() : null;
-			
-			return processMatchOrders(trader, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice, pair,
-					orderType, matchedOrder, order);
+			return order;
 		}
 		
 		throw new RuntimeException("ERROR: that order {offeredAsset=" + offeredAsset + ", expectedAsset=" + expectedAsset+ "} doesn't belongs to that pair {" + pair + "}");
 	}
 
-	private Order processMatchOrders(TraderType trader, AssetType offeredAsset, Double offeredAmount,
-			AssetType expectedAsset, Double expectedAssetUnitPrice, PairOrders pair, Order.Type orderType,
-			Order matchedOrder, Order order) {
+	public Optional<Order> findOrderBy(Optional<String> optionalPairName, String orderID) throws InterruptedException {
+		
+		Optional<Order> order = Optional.empty();
+		orderChangeLock.lock();
+		try {
+			while(orderCreationInProcess) {
+				findOrderFoundCondition.wait();
+			}
+			
+			PairOrders pair = findPairBy(optionalPairName);
+		
+			order = pair.retrieveOrderBy(orderID);
+		} finally {
+			orderChangeLock.unlock();
+		}
+		
+		return order;
+	}
+	
+	private Order processMatchOrders(final TraderType trader, AssetType offeredAsset, Double offeredAmount,
+			AssetType expectedAsset, Double expectedAssetUnitPrice, final PairOrders pair, Order.Type orderType,
+			final Order matchedOrder, final Order order) {
 		
 		if (matchedOrder == null || matchedOrder.getExpectedAssetUnitPrice().compareTo(order.getExpectedAssetUnitPrice()) != 0) {
 			
@@ -148,6 +196,8 @@ public class OrderBook {
 			return order;
 		}
 		
+		Order result = order;
+		
 		for (TraderType otherTrader : traders) {
 			
 			if (otherTrader.getID().equals(otherTraderID)) {
@@ -158,33 +208,22 @@ public class OrderBook {
 				if (moTotalAmountPrice.compareTo(oOfferedAmount) == 0) {
 				
 					performPerfectMatch(trader, pair, matchedOrder, order, otherTrader);
-				} else if (oOfferedAmount.compareTo(moTotalAmountPrice) > 0) {
+				} else if (
+						(matchedOrder.getType().equals(Order.Type.BUY))
+						&& (order.getType().equals(Order.Type.SELL))
+						&& ( order.getOfferedAmount().compareTo( formatNumber( matchedOrder.getOfferedAmount().divide(matchedOrder.getExpectedAssetUnitPrice()) ) ) > 0)
+						) {
 					
-					// to change matchedOrder from Created/Filled to Partial
-					BigDecimal localOfferedAmount = formatNumber(matchedOrder.getOfferedAmount());
-					BigDecimal localExpectedUnitPrice = formatNumber(matchedOrder.getExpectedAssetUnitPrice());
-					BigDecimal localTotalAmountPrice = formatNumber(matchedOrder.getAssetTotalAmountPrice());
-					trader.fillOrder(matchedOrder);
+					performPerfectMatch(trader, pair, matchedOrder, order, otherTrader);
 					
-					// to change order from Created to Filled
-					localOfferedAmount = formatNumber(order.getOfferedAmount());
-					localExpectedUnitPrice = formatNumber(order.getExpectedAssetUnitPrice());
-					localTotalAmountPrice = formatNumber(order.getAssetTotalAmountPrice());
-					otherTrader.fillOrder(order);
-					
-					bookwallet.payTransactionFee(order);
-					bookwallet.payTransactionFee(matchedOrder);
-					trader.removeCreatedOrder(order, this, pair);
-					otherTrader.removeCreatedOrder(matchedOrder, this, pair);
-					
-					Order partialFilledOrder = new Order(matchedOrder, Status.PARTIAL);
+					Order partialFilledOrder = new Order(order, Type.SELL, matchedOrder, Status.PARTIAL);
 					trader.addCreatedOrder(partialFilledOrder, this, pair);
-					order = partialFilledOrder;
+					result = partialFilledOrder;
 				}
 			}
 		}
 		
-		return order;
+		return result;
 	}
 
 	private void performPerfectMatch(TraderType trader, PairOrders pair, Order matchedOrder, Order order,
@@ -193,12 +232,12 @@ public class OrderBook {
 		BigDecimal localOfferedAmount = formatNumber(matchedOrder.getOfferedAmount());
 		BigDecimal localExpectedUnitPrice = formatNumber(matchedOrder.getExpectedAssetUnitPrice());
 		BigDecimal localTotalAmountPrice = formatNumber(matchedOrder.getAssetTotalAmountPrice());
-		trader.fillOrder(matchedOrder);
+		trader.fillOrder(pair, matchedOrder, order);
 		
 		localOfferedAmount = formatNumber(order.getOfferedAmount());
 		localExpectedUnitPrice = formatNumber(order.getExpectedAssetUnitPrice());
 		localTotalAmountPrice = formatNumber(order.getAssetTotalAmountPrice());
-		otherTrader.fillOrder(order);
+		otherTrader.fillOrder(pair, order, matchedOrder);
 		
 		bookwallet.payTransactionFee(order);
 		bookwallet.payTransactionFee(matchedOrder);
