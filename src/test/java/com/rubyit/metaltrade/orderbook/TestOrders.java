@@ -165,6 +165,7 @@ public class TestOrders {
 		assertEquals(formatNumber(0.01d), MockGold.getWalletAsset(USD).getBlockedBalance());
 	}
 	
+	@Ignore
 	@Test
 	public void shouldExecutePartialMatchesSellBuy() {
 		

@@ -209,9 +209,9 @@ public class OrderBook {
 				
 					performPerfectMatch(trader, pair, matchedOrder, order, otherTrader);
 				} else if (
-						(matchedOrder.getType().equals(Order.Type.BUY))
-						&& (order.getType().equals(Order.Type.SELL))
-						&& ( order.getOfferedAmount().compareTo( formatNumber( matchedOrder.getOfferedAmount().divide(matchedOrder.getExpectedAssetUnitPrice()) ) ) > 0)
+						//(matchedOrder.getType().equals(Order.Type.BUY))
+						//&& (order.getType().equals(Order.Type.SELL))
+						/*&&*/ ( order.getOfferedAmount().compareTo( formatNumber( matchedOrder.getOfferedAmount().divide(matchedOrder.getExpectedAssetUnitPrice()) ) ) > 0)
 						) {
 					
 					performPerfectMatch(trader, pair, matchedOrder, order, otherTrader);
