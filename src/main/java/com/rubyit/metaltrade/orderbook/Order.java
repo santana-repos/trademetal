@@ -1,9 +1,10 @@
 package com.rubyit.metaltrade.orderbook;
 
-import static com.rubyit.metaltrade.Utils.getGson;
 import static com.rubyit.metaltrade.Utils.formatNumber;
+import static com.rubyit.metaltrade.Utils.getGson;
 
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
@@ -62,7 +63,7 @@ public class Order implements Comparable<Order> {
 		this.status = Status.CREATED;
 	}
 
-	public Order(Order order, Type orderType, Order matchedOrder, Status status) {
+	public Order(Order order, Type orderType, Status status, BigDecimal assetTotalAmountPrice, BigDecimal offeredAmount) {
 		this.ID = order.ID;
 		this.traderID = order.traderID;
 		this.offeredAsset = order.offeredAsset;
@@ -73,17 +74,10 @@ public class Order implements Comparable<Order> {
 		this.sdf = order.sdf;
 		this.operationDate = order.operationDate; 
 		this.transactionFee = order.transactionFee;
-		
-		if (orderType.equals(Type.SELL)) {
-			this.assetTotalAmountPrice = formatNumber(order.assetTotalAmountPrice.subtract(matchedOrder.getOfferedAmount()));
-			this.offeredAmount = formatNumber(this.assetTotalAmountPrice.divide(order.expectedAssetUnitPrice));
-		} else {
-			this.assetTotalAmountPrice = order.assetTotalAmountPrice;
-			this.offeredAmount = order.offeredAmount;			
-		}
-		
 		this.status = status;
 		this.type = orderType;
+		this.assetTotalAmountPrice = assetTotalAmountPrice;
+		this.offeredAmount = offeredAmount;
 	}
 
 	public String getID() {

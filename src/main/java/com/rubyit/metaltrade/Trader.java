@@ -99,8 +99,12 @@ public class Trader extends Account implements TraderType {
 		}
 		
 		myWallet.getAsset(order.getTransactionFee().getTransactionFeeAssetType()).blockBalance(order.getTransactionFee().getTransactionFeeValue());
+		if (!order.getStatus().equals(Status.PARTIAL)) {
+			
+			
+			myWallet.getAsset(order.getOfferedAsset()).blockBalance(order.getOfferedAmount());
+		}
 		
-		myWallet.getAsset(order.getOfferedAsset()).blockBalance(order.getOfferedAmount());
 		createdOrders.add(order);
 	}
 
@@ -139,49 +143,49 @@ public class Trader extends Account implements TraderType {
 		return Optional.empty();
 	}
 
-	public void fillOrder(PairOrders pair, Order order, Order matchedOrder) {
+	public void fillOrder(PairOrders pair, Order order) {
 		
 		transactionFeePayment(order);
-		orderPayment(order, matchedOrder);
+		orderPayment(order);
 		
-		Order filledOrder = new Order(order, order.getType(), matchedOrder, Status.FILLED);
+		Order filledOrder = new Order(order, order.getType(), Status.FILLED, order.getAssetTotalAmountPrice(), order.getOfferedAmount());
 		pair.addFilledOrder(filledOrder);
 		filledOrders.add(filledOrder);
 	}
 
-	private void orderPayment(Order filledOrder, Order matchedOrder) {
+	private void orderPayment(Order filledOrder) {
 
-		AssetType offeredAsset = filledOrder.getOfferedAsset();
-		AssetType expectedAsset = filledOrder.getExpectedAsset();
-		BigDecimal offeredAmount = filledOrder.getOfferedAmount();
-		BigDecimal expectedUnitPrice = filledOrder.getExpectedAssetUnitPrice();
-		BigDecimal totalAmountPrice = filledOrder.getAssetTotalAmountPrice();
-
+		AssetType assetToPay = null;
+		AssetType assetToReceive = null;
+		BigDecimal valueToPay = formatNumber(0d);
+		BigDecimal valueToReceive = formatNumber(0d);
+		
 		if (filledOrder.getType().equals(Order.Type.SELL)) {
 			
-			try {
-				myWallet.getAsset(expectedAsset).withdraw(matchedOrder.getOfferedAmount());
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-				// assetChangeLock.unlock();
-				throw new RuntimeException("ERROR: unable to perform transfer", e);
-			}
+			assetToPay = filledOrder.getExpectedAsset();
+			valueToPay = filledOrder.getAssetTotalAmountPrice();
+			assetToReceive = filledOrder.getOfferedAsset();
+			valueToReceive = filledOrder.getOfferedAmount();
 			
-			myWallet.getAsset(offeredAsset).deposit(matchedOrder.getAssetTotalAmountPrice());
 		} else {
 			
-			try {
-				myWallet.getAsset(expectedAsset).withdraw(filledOrder.getAssetTotalAmountPrice());
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-				// assetChangeLock.unlock();
-				throw new RuntimeException("ERROR: unable to perform transfer", e);
-			}
+			assetToPay = filledOrder.getExpectedAsset();
+			valueToPay = filledOrder.getAssetTotalAmountPrice();
+			assetToReceive = filledOrder.getOfferedAsset();
+			valueToReceive = filledOrder.getOfferedAmount();
 			
-			myWallet.getAsset(offeredAsset).deposit(offeredAmount);
 		}
+		
+		try {
+			myWallet.getAsset(assetToPay).withdraw(valueToPay);
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			// assetChangeLock.unlock();
+			throw new RuntimeException("ERROR: unable to perform transfer", e);
+		}
+		
+		myWallet.getAsset(assetToReceive).deposit(valueToReceive);
 	}
 
 	private void transactionFeePayment(Order filledOrder) {
@@ -190,15 +194,15 @@ public class Trader extends Account implements TraderType {
 			return;
 		}
 		
-		AssetType offeredAsset = filledOrder.getTransactionFee().getTransactionFeeAssetType();
-		BigDecimal offeredAmount = filledOrder.getTransactionFee().getTransactionFeeValue();
-		AssetType expectedAsset = filledOrder.getTransactionFee().getTransactionFeeAssetType();
+		AssetType assetToReceive = filledOrder.getTransactionFee().getTransactionFeeAssetType();
+		BigDecimal valueToReceive = filledOrder.getTransactionFee().getTransactionFeeValue();
+		AssetType assetToPay = filledOrder.getTransactionFee().getTransactionFeeAssetType();
 		BigDecimal expectedUnitPrice = filledOrder.getExpectedAssetUnitPrice();
-		BigDecimal totalAmountPrice = formatNumber(filledOrder.getTransactionFee().getTransactionFeeValue().add(filledOrder.getTransactionFee().getTransactionFeeValue()));
+		BigDecimal valueToPay = formatNumber(filledOrder.getTransactionFee().getTransactionFeeValue().add(filledOrder.getTransactionFee().getTransactionFeeValue()));
 		
 		// perform withdraw and deposit
 		try {
-			myWallet.getAsset(expectedAsset).withdraw(totalAmountPrice);
+			myWallet.getAsset(assetToPay).withdraw(valueToPay);
 		} catch (InterruptedException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -206,7 +210,7 @@ public class Trader extends Account implements TraderType {
 			throw new RuntimeException("ERROR: unable to perform transfer", e);
 		}
 		
-		myWallet.getAsset(offeredAsset).deposit(offeredAmount);
+		myWallet.getAsset(assetToReceive).deposit(valueToReceive);
 	}
 
 	@Override

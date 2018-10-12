@@ -30,15 +30,16 @@ public class ShouldExecutePartialMatches extends BaseTests {
 		
 		BigDecimal commomGoldUsdPrice = formatNumber(40.12d);
 		BigDecimal commomAmount = formatNumber(0.243309d);
-		BigDecimal commomGOLDxUSD = formatNumber(9.76155708d);
-		Double renataOffereddUsdAmount = commomAmount.subtract(formatNumber(0.1d)).doubleValue();
+		Double renataOffereddUsdAmount = commomAmount.subtract(formatNumber(0.1d)).doubleValue(); //0.14330900
 		Double renataOfferedGoldUsdPrice = commomGoldUsdPrice.doubleValue();
-		Double mockgoldOfferedGoldAmount = commomAmount.doubleValue();
+		Double mockgoldOfferedGoldAmount = commomAmount.doubleValue(); //0.24330900
 		Double mockgoldOfferedGoldUsdPrice = commomGoldUsdPrice.doubleValue();
 		
 		OrderBook orderbook = new OrderBook(USD, usdBaseTranactionFee, GOLDxUSD);
 		
-		Order renataBuyOrder = Renata.createOrder(orderbook, USD, renataOffereddUsdAmount, GOLD, renataOfferedGoldUsdPrice);
+		//// Renata want to give 5.74955708 USD to get 0.14330900 GOLD
+		//// She used her USD to BUY GOLD at 40.12000000 USD per 1 USD
+		Order renataBuyOrder = Renata.createOrder(orderbook, USD, /*0.14330900*/renataOffereddUsdAmount, GOLD, /*40.12000000*/renataOfferedGoldUsdPrice);
 		assertEquals(Order.Type.BUY, renataBuyOrder.getType());
 		assertEquals(Order.Status.CREATED, renataBuyOrder.getStatus());
 		
@@ -53,7 +54,9 @@ public class ShouldExecutePartialMatches extends BaseTests {
 		assertEquals( formatNumber(5.74955708d), renataBuyOrder.getOfferedAmount() );
 		assertEquals( formatNumber(40.12000000d), renataBuyOrder.getExpectedAssetUnitPrice() );
 		
-		Order mockgoldSellOrder = MockGold.createOrder(orderbook, GOLD, mockgoldOfferedGoldAmount, USD, mockgoldOfferedGoldUsdPrice);
+		//// MockGold want to give 0.24330900 GOLD to get 9.76155708 USD   
+		//// He SELLed his GOLD to got USD at 40.12000000 USD per 1 USD
+		Order mockgoldSellOrder = MockGold.createOrder(orderbook, GOLD, /*0.24330900*/mockgoldOfferedGoldAmount, USD, /*40.12000000*/mockgoldOfferedGoldUsdPrice);
 		assertEquals(Order.Type.SELL, mockgoldSellOrder.getType());
 		
 		Order retrievedMockgoldSellOrder;
@@ -84,6 +87,7 @@ public class ShouldExecutePartialMatches extends BaseTests {
 		assertEquals(formatNumber(5.74955708d), retrievedRenataBuyOrder.getOfferedAmount());
 		assertEquals(formatNumber(40.12000000d), retrievedRenataBuyOrder.getExpectedAssetUnitPrice());
 		
+		//// Renata got all the Gold she wanted
 		assertEquals(expectedRenataGoldAmount, Renata.getWalletAsset(GOLD).getBalance());//0.14330900
 		assertEquals(expectedRenataUsdAmount, Renata.getWalletAsset(USD).getBalance());//254.68044292
 		assertEquals(formatNumber(0d), Renata.getWalletAsset(GOLD).getBlockedBalance());
@@ -91,6 +95,7 @@ public class ShouldExecutePartialMatches extends BaseTests {
 		assertEquals(expectedMockgoldGoldAmount, MockGold.getWalletAsset(GOLD).getBalance());//499.85669100
 		BigDecimal expectedMockgoldGoldBlockedBalance = formatNumber(commomAmount.subtract(expectedRenataGoldAmount));
 		assertEquals(expectedMockgoldGoldBlockedBalance, MockGold.getWalletAsset(GOLD).getBlockedBalance());//0.10000000
+		//// MockGold just got partial USD he wanted
 		assertEquals(expectedMockgoldUsdAmount, MockGold.getWalletAsset(USD).getBalance());//505.73955708
 		assertEquals(formatNumber(0.1d), MockGold.getWalletAsset(GOLD).getBlockedBalance());
 		assertEquals(formatNumber(0.01d), MockGold.getWalletAsset(USD).getBlockedBalance());

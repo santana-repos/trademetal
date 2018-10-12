@@ -9,6 +9,7 @@ import org.junit.runners.Suite;
 			ShouldAnTraderBeAbleToCancelAnCreatedOrder.class,
 			ShouldAtraderRemoveFromOrderBookAcreatedOrder.class,
 			ShouldExecutePartialMatches.class,
+			ShouldExecutePartialMatchesReverse.class,
 			ShouldExecutePerfectMatch.class,
 			ShouldHaveAPairWithNotNullAskOrder.class,
 			ShouldHaveAPairWithNotNullBidOrder.class,

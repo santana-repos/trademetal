@@ -3,6 +3,7 @@ package com.rubyit.metaltrade.orderbook;
 import static com.rubyit.metaltrade.Utils.formatNumber;
 
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -209,14 +210,56 @@ public class OrderBook {
 				
 					performPerfectMatch(trader, pair, matchedOrder, order, otherTrader);
 				} else if (
-						//(matchedOrder.getType().equals(Order.Type.BUY))
-						//&& (order.getType().equals(Order.Type.SELL))
-						/*&&*/ ( order.getOfferedAmount().compareTo( formatNumber( matchedOrder.getOfferedAmount().divide(matchedOrder.getExpectedAssetUnitPrice()) ) ) > 0)
+						( order.getOfferedAmount().compareTo( formatNumber( matchedOrder.getOfferedAmount().divide(matchedOrder.getExpectedAssetUnitPrice(), MathContext.DECIMAL128) ) ) > 0)
 						) {
 					
-					performPerfectMatch(trader, pair, matchedOrder, order, otherTrader);
+					//performPerfectMatch(trader, pair, matchedOrder, order, otherTrader);
+					Order partialOrder = new Order(order, order.getType(), order.getStatus(), matchedOrder.getOfferedAmount(), matchedOrder.getAssetTotalAmountPrice());
+					otherTrader.fillOrder(pair, partialOrder);
 					
-					Order partialFilledOrder = new Order(order, Type.SELL, matchedOrder, Status.PARTIAL);
+					Order partialMatched = new Order(matchedOrder, matchedOrder.getType(), matchedOrder.getStatus(), matchedOrder.getAssetTotalAmountPrice(), matchedOrder.getOfferedAmount());
+					trader.fillOrder(pair, partialMatched);
+					
+					bookwallet.payTransactionFee(partialOrder);
+					bookwallet.payTransactionFee(partialMatched);
+					trader.removeCreatedOrder(partialOrder, this, pair);
+					otherTrader.removeCreatedOrder(partialMatched, this, pair);
+					
+					Order partialFilledOrder = null;
+					BigDecimal localAssetTotalAmountPrice = null;
+					BigDecimal localOfferedAmount = null;
+					////
+					/*
+					Order partialFilledOrder = null;
+					BigDecimal assetTotalAmountPrice = null;
+					BigDecimal offeredAmount = null;
+					if (orderType.equals(Type.SELL) && status.equals(Status.FILLED)) {
+						assetTotalAmountPrice = order.assetTotalAmountPrice;
+						offeredAmount = order.offeredAmount;
+					}
+					if (orderType.equals(Type.BUY) && status.equals(Status.PARTIAL)) {
+						assetTotalAmountPrice = matchedOrder.offeredAmount;
+						offeredAmount = order.offeredAmount;			
+					}
+					
+					if (orderType.equals(Type.SELL)) {
+						assetTotalAmountPrice = formatNumber(order.assetTotalAmountPrice.subtract(matchedOrder.getOfferedAmount()));
+						offeredAmount = formatNumber(this.assetTotalAmountPrice.divide(order.expectedAssetUnitPrice, MathContext.DECIMAL128));
+					}
+					if (orderType.equals(Type.BUY)) {
+						assetTotalAmountPrice = order.assetTotalAmountPrice;
+						offeredAmount = order.offeredAmount;
+					}
+					*/
+					if (orderType.equals(Type.SELL)) {
+						localAssetTotalAmountPrice = formatNumber(order.getAssetTotalAmountPrice().subtract(matchedOrder.getOfferedAmount()));
+						localOfferedAmount = formatNumber(localAssetTotalAmountPrice.divide(order.getExpectedAssetUnitPrice(), MathContext.DECIMAL128));
+					}
+					if (orderType.equals(Type.BUY)) {
+						localAssetTotalAmountPrice = matchedOrder.getOfferedAmount();
+						localOfferedAmount = order.getOfferedAmount();			
+					}
+					partialFilledOrder = new Order(order, order.getType(), Status.PARTIAL, localAssetTotalAmountPrice, localOfferedAmount);
 					trader.addCreatedOrder(partialFilledOrder, this, pair);
 					result = partialFilledOrder;
 				}
@@ -232,12 +275,12 @@ public class OrderBook {
 		BigDecimal localOfferedAmount = formatNumber(matchedOrder.getOfferedAmount());
 		BigDecimal localExpectedUnitPrice = formatNumber(matchedOrder.getExpectedAssetUnitPrice());
 		BigDecimal localTotalAmountPrice = formatNumber(matchedOrder.getAssetTotalAmountPrice());
-		trader.fillOrder(pair, matchedOrder, order);
+		trader.fillOrder(pair, matchedOrder);
 		
 		localOfferedAmount = formatNumber(order.getOfferedAmount());
 		localExpectedUnitPrice = formatNumber(order.getExpectedAssetUnitPrice());
 		localTotalAmountPrice = formatNumber(order.getAssetTotalAmountPrice());
-		otherTrader.fillOrder(pair, order, matchedOrder);
+		otherTrader.fillOrder(pair, order);
 		
 		bookwallet.payTransactionFee(order);
 		bookwallet.payTransactionFee(matchedOrder);

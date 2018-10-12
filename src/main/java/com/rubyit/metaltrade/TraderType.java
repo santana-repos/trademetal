@@ -17,7 +17,7 @@ public interface TraderType {
 	Order createOrder(OrderBook orderbook, AssetType offeredAsset, Double offeredAmount, AssetType expectedAsset, Double expectedAssetUnitPrice);
 	void addCreatedOrder(Order order, OrderBook orderbook, PairOrders pair);
 	void removeCreatedOrder(Order order, OrderBook orderbook, PairOrders pair);
-	void fillOrder(PairOrders pair, Order filledOrder, Order matchedOrder);
+	void fillOrder(PairOrders pair, Order filledOrder);
 }
 
 
