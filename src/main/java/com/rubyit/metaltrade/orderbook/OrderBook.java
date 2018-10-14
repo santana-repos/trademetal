@@ -27,10 +27,9 @@ public class OrderBook {
 	private Set<TraderType> traders;
 	private OrderBookWallet bookwallet;
 	private TransactionFee transactionFee;
-	transient private Lock pairChangeLock;
 
 	transient private Lock orderChangeLock;
-	transient private Condition findOrderFoundCondition;
+	transient private Condition findOrderCondition;
 	private boolean orderCreationInProcess;
 	
 	public OrderBook(AssetType transactionFeeAssetType, Pair... pairs) {
@@ -44,10 +43,9 @@ public class OrderBook {
 		for (Pair pair : pairs) {
 			this.pairs.add(new PairOrders(pair));
 		}
-		pairChangeLock = new ReentrantLock();
 		
 		orderChangeLock = new ReentrantLock();
-		findOrderFoundCondition = orderChangeLock.newCondition();
+		findOrderCondition = orderChangeLock.newCondition();
 	}
 	
 	public OrderBook(AssetType transactionFeeAssetType, Double transactionFeeValue, Pair... pairs) {
@@ -170,7 +168,7 @@ public class OrderBook {
 		orderChangeLock.lock();
 		try {
 			while(orderCreationInProcess) {
-				findOrderFoundCondition.wait();
+				findOrderCondition.wait();
 			}
 			
 			PairOrders pair = findPairBy(optionalPairName);
@@ -208,60 +206,12 @@ public class OrderBook {
 				
 				if (moTotalAmountPrice.compareTo(oOfferedAmount) == 0) {
 				
-					performPerfectMatch(trader, pair, matchedOrder, order, otherTrader);
+					return performPerfectMatch(trader, pair, matchedOrder, order, otherTrader);
 				} else if (
 						( order.getOfferedAmount().compareTo( formatNumber( matchedOrder.getOfferedAmount().divide(matchedOrder.getExpectedAssetUnitPrice(), MathContext.DECIMAL128) ) ) > 0)
 						) {
 					
-					//performPerfectMatch(trader, pair, matchedOrder, order, otherTrader);
-					Order partialOrder = new Order(order, order.getType(), order.getStatus(), matchedOrder.getOfferedAmount(), matchedOrder.getAssetTotalAmountPrice());
-					otherTrader.fillOrder(pair, partialOrder);
-					
-					Order partialMatched = new Order(matchedOrder, matchedOrder.getType(), matchedOrder.getStatus(), matchedOrder.getAssetTotalAmountPrice(), matchedOrder.getOfferedAmount());
-					trader.fillOrder(pair, partialMatched);
-					
-					bookwallet.payTransactionFee(partialOrder);
-					bookwallet.payTransactionFee(partialMatched);
-					trader.removeCreatedOrder(partialOrder, this, pair);
-					otherTrader.removeCreatedOrder(partialMatched, this, pair);
-					
-					Order partialFilledOrder = null;
-					BigDecimal localAssetTotalAmountPrice = null;
-					BigDecimal localOfferedAmount = null;
-					////
-					/*
-					Order partialFilledOrder = null;
-					BigDecimal assetTotalAmountPrice = null;
-					BigDecimal offeredAmount = null;
-					if (orderType.equals(Type.SELL) && status.equals(Status.FILLED)) {
-						assetTotalAmountPrice = order.assetTotalAmountPrice;
-						offeredAmount = order.offeredAmount;
-					}
-					if (orderType.equals(Type.BUY) && status.equals(Status.PARTIAL)) {
-						assetTotalAmountPrice = matchedOrder.offeredAmount;
-						offeredAmount = order.offeredAmount;			
-					}
-					
-					if (orderType.equals(Type.SELL)) {
-						assetTotalAmountPrice = formatNumber(order.assetTotalAmountPrice.subtract(matchedOrder.getOfferedAmount()));
-						offeredAmount = formatNumber(this.assetTotalAmountPrice.divide(order.expectedAssetUnitPrice, MathContext.DECIMAL128));
-					}
-					if (orderType.equals(Type.BUY)) {
-						assetTotalAmountPrice = order.assetTotalAmountPrice;
-						offeredAmount = order.offeredAmount;
-					}
-					*/
-					if (orderType.equals(Type.SELL)) {
-						localAssetTotalAmountPrice = formatNumber(order.getAssetTotalAmountPrice().subtract(matchedOrder.getOfferedAmount()));
-						localOfferedAmount = formatNumber(localAssetTotalAmountPrice.divide(order.getExpectedAssetUnitPrice(), MathContext.DECIMAL128));
-					}
-					if (orderType.equals(Type.BUY)) {
-						localAssetTotalAmountPrice = matchedOrder.getOfferedAmount();
-						localOfferedAmount = order.getOfferedAmount();			
-					}
-					partialFilledOrder = new Order(order, order.getType(), Status.PARTIAL, localAssetTotalAmountPrice, localOfferedAmount);
-					trader.addCreatedOrder(partialFilledOrder, this, pair);
-					result = partialFilledOrder;
+					return performPartialMatch(trader, pair, orderType, matchedOrder, order, otherTrader);
 				}
 			}
 		}
@@ -269,28 +219,56 @@ public class OrderBook {
 		return result;
 	}
 
-	private void performPerfectMatch(TraderType trader, PairOrders pair, Order matchedOrder, Order order,
+	private Order performPartialMatch(final TraderType trader, final PairOrders pair, Order.Type orderType,
+			final Order matchedOrder, final Order order, TraderType otherTrader) {
+		
+		Order partialOrder = new Order(order, order.getType(), Status.PARTIAL, matchedOrder.getOfferedAmount(), matchedOrder.getAssetTotalAmountPrice());
+		otherTrader.fillOrder(pair, partialOrder);
+		
+		Order partialMatched = new Order(matchedOrder, matchedOrder.getType(), matchedOrder.getStatus(), matchedOrder.getAssetTotalAmountPrice(), matchedOrder.getOfferedAmount());
+		trader.fillOrder(pair, partialMatched);
+		
+		bookwallet.payTransactionFee(partialOrder);
+		bookwallet.payTransactionFee(partialMatched);
+		trader.removeCreatedOrder(partialOrder, this, pair);
+		otherTrader.removeCreatedOrder(partialMatched, this, pair);
+		
+		BigDecimal localAssetTotalAmountPrice = null;
+		BigDecimal localOfferedAmount = null;
+		
+
+		if (orderType.equals(Type.SELL)) {
+			localAssetTotalAmountPrice = formatNumber(order.getAssetTotalAmountPrice().subtract(matchedOrder.getOfferedAmount()));
+			localOfferedAmount = formatNumber(localAssetTotalAmountPrice.divide(order.getExpectedAssetUnitPrice(), MathContext.DECIMAL128));
+		}
+		if (orderType.equals(Type.BUY)) {
+			localAssetTotalAmountPrice = matchedOrder.getOfferedAmount();
+			localOfferedAmount = order.getOfferedAmount();			
+		}
+		Order partialFilledOrder = new Order(order, order.getType(), Status.PARTIAL, localAssetTotalAmountPrice, localOfferedAmount);
+		trader.addCreatedOrder(partialFilledOrder, this, pair);
+		
+		return partialFilledOrder;
+	}
+
+	private Order performPerfectMatch(final TraderType trader, final PairOrders pair, final Order matchedOrder, final Order order,
 			TraderType otherTrader) {
 		
-		BigDecimal localOfferedAmount = formatNumber(matchedOrder.getOfferedAmount());
-		BigDecimal localExpectedUnitPrice = formatNumber(matchedOrder.getExpectedAssetUnitPrice());
-		BigDecimal localTotalAmountPrice = formatNumber(matchedOrder.getAssetTotalAmountPrice());
 		trader.fillOrder(pair, matchedOrder);
 		
-		localOfferedAmount = formatNumber(order.getOfferedAmount());
-		localExpectedUnitPrice = formatNumber(order.getExpectedAssetUnitPrice());
-		localTotalAmountPrice = formatNumber(order.getAssetTotalAmountPrice());
 		otherTrader.fillOrder(pair, order);
 		
 		bookwallet.payTransactionFee(order);
 		bookwallet.payTransactionFee(matchedOrder);
 		trader.removeCreatedOrder(order, this, pair);
 		otherTrader.removeCreatedOrder(matchedOrder, this, pair);
+		
+		return order;
 	}
 	
 	public PairOrders findPairBy(String offeredAssetID, String expectedAssetID) {
 		
-		pairChangeLock.lock();
+		orderChangeLock.lock();
 		try {
 			for (PairOrders pair : pairs) {
 				String amountAssetID = pair.getPair().getAmountAsset().getID();
@@ -303,7 +281,7 @@ public class OrderBook {
 				}
 			}
 		} finally {
-			pairChangeLock.unlock();
+			orderChangeLock.unlock();
 			
 		}
 		
@@ -312,7 +290,7 @@ public class OrderBook {
 	
 	public PairOrders findPairBy(Optional<String> optionalPairName) {
 		
-		pairChangeLock.lock();
+		orderChangeLock.lock();
 		try {
 			for (PairOrders pair : pairs) {
 				String pairName = pair.getPair().getPairName();
@@ -321,7 +299,7 @@ public class OrderBook {
 				}
 			}
 		} finally {
-			pairChangeLock.unlock();
+			orderChangeLock.unlock();
 			
 		}
 		
@@ -330,7 +308,7 @@ public class OrderBook {
 	
 	public PairOrders findPairBy(String assetID) {
 		
-		pairChangeLock.lock();
+		orderChangeLock.lock();
 		try {
 			for (PairOrders pair : pairs) {
 				String amountAssetID = pair.getPair().getAmountAsset().getID();
@@ -343,7 +321,7 @@ public class OrderBook {
 				}
 			}
 		} finally {
-			pairChangeLock.unlock();
+			orderChangeLock.unlock();
 			
 		}
 		

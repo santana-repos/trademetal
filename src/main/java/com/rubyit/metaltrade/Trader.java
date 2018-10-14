@@ -98,10 +98,9 @@ public class Trader extends Account implements TraderType {
 			orderbook.retrievePairOrders(pair.getPair()).addSellOrder(order);
 		}
 		
-		myWallet.getAsset(order.getTransactionFee().getTransactionFeeAssetType()).blockBalance(order.getTransactionFee().getTransactionFeeValue());
 		if (!order.getStatus().equals(Status.PARTIAL)) {
 			
-			
+			myWallet.getAsset(order.getTransactionFee().getTransactionFeeAssetType()).blockBalance(order.getTransactionFee().getTransactionFeeValue());
 			myWallet.getAsset(order.getOfferedAsset()).blockBalance(order.getOfferedAmount());
 		}
 		
@@ -119,8 +118,10 @@ public class Trader extends Account implements TraderType {
 					orderbook.retrievePairOrders(pair.getPair()).removeSellOrder(order);
 				}
 				
-				myWallet.getAsset(order.getTransactionFee().getTransactionFeeAssetType()).unblockBalance(order.getTransactionFee().getTransactionFeeValue());
-
+				if (!order.getStatus().equals(Status.PARTIAL)) {
+					
+					myWallet.getAsset(order.getTransactionFee().getTransactionFeeAssetType()).unblockBalance(order.getTransactionFee().getTransactionFeeValue());
+				}
 				myWallet.getAsset(order.getOfferedAsset()).unblockBalance(order.getOfferedAmount());
 				
 				createdOrders.remove(o);

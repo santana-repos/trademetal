@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.rubyit.metaltrade.orderbook.Order;
+import com.rubyit.metaltrade.orderbook.Order.Status;
 
 public class OrderBookWallet {
 	
@@ -23,7 +24,10 @@ public class OrderBookWallet {
 	public void payTransactionFee(Order order) {
 		if (order.getTransactionFee().getTransactionFeeValue().compareTo(BigDecimal.ZERO) > 0) {
 			
-			wallet.getAsset(order.getTransactionFee().getTransactionFeeAssetType()).deposit(order.getTransactionFee().getTransactionFeeValue());
+			if (!order.getStatus().equals(Status.PARTIAL)) {
+				
+				wallet.getAsset(order.getTransactionFee().getTransactionFeeAssetType()).deposit(order.getTransactionFee().getTransactionFeeValue());
+			}
 		}
 		executedOrders.add(order);
 	}

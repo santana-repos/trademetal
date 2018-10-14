@@ -105,7 +105,7 @@ public class PairOrders {
 	public List<Order> retrieveFilledOrders() {
 		return new ArrayList<>(filledOrders);
 	}
-
+	
 	@Override
 	public String toString() {
 		Map<String, Object> json = new LinkedHashMap<String, Object>();

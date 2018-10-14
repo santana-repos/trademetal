@@ -89,13 +89,14 @@ public class ShouldExecutePartialMatchesReverse extends BaseTests {
 		assertEquals(formatNumber(0.14330900d), retrievedMockgoldSellOrder.getOfferedAmount());
 		assertEquals(formatNumber(40.12000000d), retrievedMockgoldSellOrder.getExpectedAssetUnitPrice());
 		
-		//// Renata got just partial Gold shed wanted
+		//// Renata got just partial Gold she wanted
 		assertEquals(formatNumber(0.14330900d), expectedRenataGoldAmount);//0.14330900
 		assertEquals(expectedRenataGoldAmount, Renata.getWalletAsset(GOLD).getBalance());//0.14330900
-		assertEquals(formatNumber(0.1d), Renata.getWalletAsset(GOLD).getBlockedBalance());
+		assertEquals(formatNumber(0d), Renata.getWalletAsset(GOLD).getBlockedBalance());
+		BigDecimal renataBlockedUSDAmount = formatNumber( formatNumber(formatNumber(9.76155708d).subtract(formatNumber(5.74955708d))).add(formatNumber(0.01d)) );
+		assertEquals(renataBlockedUSDAmount, Renata.getWalletAsset(USD).getBlockedBalance()); //4.02200000
 		assertEquals(formatNumber(254.68044292d), expectedRenataUsdAmount);//254.68044292
 		assertEquals(expectedRenataUsdAmount, Renata.getWalletAsset(USD).getBalance());//254.68044292
-		assertEquals(formatNumber(formatNumber(9.76155708d).subtract(formatNumber(5.74955708d)))/*4.01200000*/, Renata.getWalletAsset(USD).getBlockedBalance());
 		
 		
 		//// MockGold got all USD he wanted
