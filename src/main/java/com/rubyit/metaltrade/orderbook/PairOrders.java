@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.TreeSet;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 import com.rubyit.metaltrade.obj.Pair;
 
@@ -21,9 +21,9 @@ public class PairOrders {
 
 	public PairOrders(Pair pair) {
 		this.pair = pair;
-		this.sellOrders = new TreeSet<>();
-		this.buyOrders = new TreeSet<>();
-		this.filledOrders = new TreeSet<>();
+		this.sellOrders = new ConcurrentSkipListSet<>();
+		this.buyOrders = new ConcurrentSkipListSet<>();
+		this.filledOrders = new ConcurrentSkipListSet<>();
 	}
 
 	public Pair getPair() {
@@ -32,21 +32,11 @@ public class PairOrders {
 	
 	public Optional<Order> retrieveOrderBy(String orderID) {
 		Optional<Order> order = Optional.empty();
-		
-		
-		for (Order o : sellOrders) {
-			if (o.getID().equals(orderID)) {
-				return  Optional.of(o);
-			}
-		}
-		
-		for (Order o : buyOrders) {
-			if (o.getID().equals(orderID)) {
-				return  Optional.of(o);
-			}
-		}
-		
-		for (Order o : filledOrders) {
+
+		List<Order> allOrders = new ArrayList<>(sellOrders);
+		allOrders.addAll(buyOrders);
+		allOrders.addAll(filledOrders);
+		for (Order o : allOrders) {
 			if (o.getID().equals(orderID)) {
 				return  Optional.of(o);
 			}
@@ -81,7 +71,11 @@ public class PairOrders {
 	}
 
 	public List<Order> retrieveSellOrders() {
-		return new ArrayList<>(sellOrders);
+		List<Order> result = null;
+		
+		result = new ArrayList<>(sellOrders);
+		
+		return result;
 	}
 
 	public List<Order> retrieveBuyOrders() {

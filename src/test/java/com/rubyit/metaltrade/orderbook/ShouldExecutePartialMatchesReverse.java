@@ -63,11 +63,7 @@ public class ShouldExecutePartialMatchesReverse extends BaseTests {
 		assertEquals(Order.Status.PARTIAL, renataBuyOrder.getStatus());
 		
 		Order retrievedRenataBuyOrder;
-		try {
-			retrievedRenataBuyOrder = orderbook.findOrderBy(Optional.of(GOLDxUSD.getPairName()), renataBuyOrder.getID()).get();
-		} catch (InterruptedException e) {
-			throw new RuntimeException("Unable to search for an order now", e);
-		}
+		retrievedRenataBuyOrder = orderbook.findOrderBy(Optional.of(GOLDxUSD.getPairName()), renataBuyOrder.getID()).get();
 		assertEquals(renataBuyOrder, retrievedRenataBuyOrder);
 		
 		assertEquals(Order.Status.PARTIAL, retrievedRenataBuyOrder.getStatus());
@@ -78,11 +74,8 @@ public class ShouldExecutePartialMatchesReverse extends BaseTests {
 		assertEquals(formatNumber(40.12000000d), retrievedRenataBuyOrder.getExpectedAssetUnitPrice());
 		
 		Order retrievedMockgoldSellOrder;
-		try {
-			retrievedMockgoldSellOrder = orderbook.findOrderBy(Optional.of(GOLDxUSD.getPairName()), mockgoldSellOrder.getID()).get();
-		} catch (InterruptedException e) {
-			throw new RuntimeException("Unable to search for an order now", e);
-		}
+		retrievedMockgoldSellOrder = orderbook.findOrderBy(Optional.of(GOLDxUSD.getPairName()), mockgoldSellOrder.getID()).get();
+		
 		assertEquals(Order.Type.SELL, retrievedMockgoldSellOrder.getType());
 		assertEquals(Order.Status.FILLED, retrievedMockgoldSellOrder.getStatus());
 		assertEquals(formatNumber(5.74955708d), retrievedMockgoldSellOrder.getAssetTotalAmountPrice());

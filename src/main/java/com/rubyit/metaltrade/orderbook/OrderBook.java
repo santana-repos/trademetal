@@ -27,10 +27,6 @@ public class OrderBook {
 	private Set<TraderType> traders;
 	private OrderBookWallet bookwallet;
 	private TransactionFee transactionFee;
-
-	transient private Lock orderChangeLock;
-	transient private Condition findOrderCondition;
-	private boolean orderCreationInProcess;
 	
 	public OrderBook(AssetType transactionFeeAssetType, Pair... pairs) {
 		if (pairs == null || pairs.length == 0) {
@@ -43,9 +39,6 @@ public class OrderBook {
 		for (Pair pair : pairs) {
 			this.pairs.add(new PairOrders(pair));
 		}
-		
-		orderChangeLock = new ReentrantLock();
-		findOrderCondition = orderChangeLock.newCondition();
 	}
 	
 	public OrderBook(AssetType transactionFeeAssetType, Double transactionFeeValue, Pair... pairs) {
@@ -111,24 +104,17 @@ public class OrderBook {
 			&& (expectedAssetID.equals(priceAssetID))
 		   ) {
 			
-			orderChangeLock.lock();
-			try {
-				
-				this.orderCreationInProcess = true;
-				traders.add(trader);
-				Order.Type orderType = Order.Type.SELL;
-				order = new Order(trader, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice, pair.getPair(), orderType, transactionFee);
-				trader.addCreatedOrder(order, this, pair);
-				
-				//look to buyOrders
-				Order matchedOrder = (pair.retrieveBuyOrders().size() > 0) ? pair.getAskOrder() : null;
-				
-				order = processMatchOrders(trader, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice, pair,
-						orderType, matchedOrder, order);
-			} finally {
-				this.orderCreationInProcess = false;
-				orderChangeLock.unlock();
-			}
+			traders.add(trader);
+			Order.Type orderType = Order.Type.SELL;
+			order = new Order(trader, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice, pair.getPair(), orderType, transactionFee);
+			trader.addCreatedOrder(order, this, pair);
+			
+			//look to buyOrders
+			Order matchedOrder = (pair.retrieveBuyOrders().size() > 0) ? pair.getAskOrder() : null;
+			
+			order = processMatchOrders(trader, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice, pair,
+					orderType, matchedOrder, order);
+			
 			
 			return order;
 		}
@@ -137,24 +123,16 @@ public class OrderBook {
 			&& (expectedAssetID.equals(amountAssetID))
 		   ) {
 			
-			orderChangeLock.lock();
-			try {
-				
-				this.orderCreationInProcess = true;
-				traders.add(trader);
-				Order.Type orderType = Order.Type.BUY;
-				order = new Order(trader, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice, pair.getPair(), orderType, transactionFee);
-				trader.addCreatedOrder(order, this, pair);
-				
-				//look to sellOrders
-				Order matchedOrder = (pair.retrieveSellOrders().size() > 0) ? pair.getBidOrder() : null;
-				
-				order = processMatchOrders(trader, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice, pair,
-						orderType, matchedOrder, order);
-			} finally {
-				this.orderCreationInProcess = false;
-				orderChangeLock.unlock();
-			}
+			traders.add(trader);
+			Order.Type orderType = Order.Type.BUY;
+			order = new Order(trader, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice, pair.getPair(), orderType, transactionFee);
+			trader.addCreatedOrder(order, this, pair);
+			
+			//look to sellOrders
+			Order matchedOrder = (pair.retrieveSellOrders().size() > 0) ? pair.getBidOrder() : null;
+			
+			order = processMatchOrders(trader, offeredAsset, offeredAmount, expectedAsset, expectedAssetUnitPrice, pair,
+					orderType, matchedOrder, order);
 			
 			return order;
 		}
@@ -162,21 +140,12 @@ public class OrderBook {
 		throw new RuntimeException("ERROR: that order {offeredAsset=" + offeredAsset + ", expectedAsset=" + expectedAsset+ "} doesn't belongs to that pair {" + pair + "}");
 	}
 
-	public Optional<Order> findOrderBy(Optional<String> optionalPairName, String orderID) throws InterruptedException {
+	public Optional<Order> findOrderBy(Optional<String> optionalPairName, String orderID) {
 		
 		Optional<Order> order = Optional.empty();
-		orderChangeLock.lock();
-		try {
-			while(orderCreationInProcess) {
-				findOrderCondition.wait();
-			}
-			
-			PairOrders pair = findPairBy(optionalPairName);
+		PairOrders pair = findPairBy(optionalPairName);
 		
-			order = pair.retrieveOrderBy(orderID);
-		} finally {
-			orderChangeLock.unlock();
-		}
+		order = pair.retrieveOrderBy(orderID);
 		
 		return order;
 	}
@@ -268,21 +237,15 @@ public class OrderBook {
 	
 	public PairOrders findPairBy(String offeredAssetID, String expectedAssetID) {
 		
-		orderChangeLock.lock();
-		try {
-			for (PairOrders pair : pairs) {
-				String amountAssetID = pair.getPair().getAmountAsset().getID();
-				String priceAssetID = pair.getPair().getPriceAsset().getID();
-				if ((amountAssetID.equals(offeredAssetID)) && (priceAssetID.equals(expectedAssetID))) {
-					return pair;
-				}
-				if ((priceAssetID.equals(offeredAssetID)) && (amountAssetID.equals(expectedAssetID))) {
-					return pair;
-				}
+		for (PairOrders pair : pairs) {
+			String amountAssetID = pair.getPair().getAmountAsset().getID();
+			String priceAssetID = pair.getPair().getPriceAsset().getID();
+			if ((amountAssetID.equals(offeredAssetID)) && (priceAssetID.equals(expectedAssetID))) {
+				return pair;
 			}
-		} finally {
-			orderChangeLock.unlock();
-			
+			if ((priceAssetID.equals(offeredAssetID)) && (amountAssetID.equals(expectedAssetID))) {
+				return pair;
+			}
 		}
 		
 		return null;
@@ -290,17 +253,11 @@ public class OrderBook {
 	
 	public PairOrders findPairBy(Optional<String> optionalPairName) {
 		
-		orderChangeLock.lock();
-		try {
-			for (PairOrders pair : pairs) {
-				String pairName = pair.getPair().getPairName();
-				if (optionalPairName.get().equals(pairName)) {
-					return pair;
-				}
+		for (PairOrders pair : pairs) {
+			String pairName = pair.getPair().getPairName();
+			if (optionalPairName.get().equals(pairName)) {
+				return pair;
 			}
-		} finally {
-			orderChangeLock.unlock();
-			
 		}
 		
 		return null;
@@ -308,21 +265,15 @@ public class OrderBook {
 	
 	public PairOrders findPairBy(String assetID) {
 		
-		orderChangeLock.lock();
-		try {
-			for (PairOrders pair : pairs) {
-				String amountAssetID = pair.getPair().getAmountAsset().getID();
-				String priceAssetID = pair.getPair().getPriceAsset().getID();
-				if (amountAssetID.equals(assetID)) {
-					return pair;//new CurrencyPair(currencyPair);
-				}
-				if (priceAssetID.equals(assetID)) {
-					return pair;//new CurrencyPair(currencyPair);
-				}
+		for (PairOrders pair : pairs) {
+			String amountAssetID = pair.getPair().getAmountAsset().getID();
+			String priceAssetID = pair.getPair().getPriceAsset().getID();
+			if (amountAssetID.equals(assetID)) {
+				return pair;//new CurrencyPair(currencyPair);
 			}
-		} finally {
-			orderChangeLock.unlock();
-			
+			if (priceAssetID.equals(assetID)) {
+				return pair;//new CurrencyPair(currencyPair);
+			}
 		}
 		
 		return null;
